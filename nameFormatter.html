@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>nameFormatter</title>
+    <style>
+      /* 全体デザイン：パステルグラデーションと柔らかな丸み */
+      body {
+        font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+        background: linear-gradient(135deg, #fdf6f8 0%, #f0f7ff 50%, #f3fdf8 100%);
+        padding: 20px;
+        color: #555;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .card {
+        max-width: 820px;
+        width: 100%;
+        margin: 0 auto;
+        padding: 30px;
+        background: linear-gradient(145deg, #f6fbff, #eaf4ff);
+        border-radius: 30px;
+        box-shadow: 0 10px 25px rgba(200, 200, 200, 0.3);
+        border: 2px solid rgba(255, 255, 255, 0.8);
+      }
+
+      h1 { margin: 0 0 20px; color: #7a82a0; font-size: 1.5rem; text-align: center; }
+
+      label { display: block; margin-top: 15px; font-weight: 600; color: #888; font-size: 0.9rem; margin-left: 5px; }
+
+      input, textarea, select {
+        width: 100%;
+        padding: 12px 16px;
+        margin-top: 8px;
+        box-sizing: border-box;
+        border-radius: 20px;
+        border: 2px solid #eee;
+        background: #fcfcfc;
+        transition: all 0.3s ease;
+        font-size: 1rem;
+      }
+
+      input:focus, select:focus, textarea:focus {
+        outline: none;
+        border-color: #c7d2fe;
+        box-shadow: 0 0 8px rgba(199, 210, 254, 0.5);
+      }
+
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+      @media (max-width: 820px) { .row { grid-template-columns: 1fr; } }
+
+      button {
+        margin-top: 20px;
+        padding: 12px 24px;
+        cursor: pointer;
+        border-radius: 25px;
+        border: none;
+        background: #ffb7c5;
+        color: white;
+        font-weight: bold;
+        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 4px 0 #e6a0ad;
+      }
+
+      button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 0 #e6a0ad;
+      }
+
+      button:active {
+        transform: translateY(2px);
+        box-shadow: none;
+      }
+
+      #copyBtn { background: #b7e4c7; box-shadow: 0 4px 0 #9dc9ab; }
+      #copyBtn:hover { box-shadow: 0 6px 0 #9dc9ab; }
+
+      .out { background: #fdfdfd; border-radius: 15px; font-family: monospace; color: #666; resize: vertical; }
+
+      .hint { margin-top: 4px; color: #aaa; font-size: 0.75rem; margin-left: 5px; }
+
+      .btnRow { display: flex; gap: 15px; flex-wrap: wrap; align-items: center; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>パーソル決定報告フォーム</h1>
+
+      <div class="row">
+        <div>
+          <label>漢字の氏名</label>
+          <input id="nameKanji" type="text" placeholder="猫田 子猫">
+          <div class="hint">姓と名の間の全角/連続スペースは半角1つに整形</div>
+        </div>
+        <div>
+          <label>かな/カナの氏名</label>
+          <input id="nameKana" type="text" placeholder="ねこた こねこ">
+          <div class="hint">ひらがなはカタカナ化 + スペース整形。ローマ字はこの入力から生成</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>開始日</label>
+          <input id="startDate" type="date">
+        </div>
+        <div>
+          <label>単価</label>
+          <div class="row" style="grid-template-columns: 120px 1fr; gap: 10px;">
+            <select id="rateType">
+              <option value="月額">月額</option>
+              <option value="時給">時給</option>
+            </select>
+            <input id="rateValue" type="number" inputmode="numeric" placeholder="例: 500000" step="1" min="0">
+          </div>
+          <div class="hint">数値は出力時にカンマ区切りにします</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>ローマ字(ヘボン式) 小文字</label>
+          <input id="roman" type="text" placeholder="nekota koneko" readonly>
+          <div class="hint">かな/カナの氏名から自動生成</div>
+        </div>
+        <div>
+          <label>操作</label>
+          <div class="btnRow">
+            <button id="formatBtn" type="button">整形して出力</button>
+            <button id="copyBtn" type="button">コピー</button>
+          </div>
+        </div>
+      </div>
+
+      <label>出力</label>
+      <textarea id="out" class="out" rows="8" readonly></textarea>
+    </div>
+
+    <script>
+      function normalizeSpaces(s) {
+        return String(s || "")
+          .replace(/\u3000/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function hiraToKata(s) {
+        return String(s || "").replace(/[\u3041-\u3096]/g, function(ch) {
+          return String.fromCharCode(ch.charCodeAt(0) + 0x60);
+        });
+      }
+
+      function formatKanjiName(s) {
+        return normalizeSpaces(s);
+      }
+
+      function formatKanaName(s) {
+        return normalizeSpaces(hiraToKata(s));
+      }
+
+      function toLowerAscii(s) {
+        return String(s || "").toLowerCase();
+      }
+
+      function formatNumberWithComma(n) {
+        var x = String(n || "").trim();
+        if (!x) return "";
+        x = x.replace(/[^\d]/g, "");
+        if (!x) return "";
+        x = String(parseInt(x, 10));
+        return x.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      }
+
+      function kanaToHepburnRomaji(kana) {
+        var s = formatKanaName(kana);
+        if (!s) return "";
+
+        var digraph = {
+          "キャ":"kya","キュ":"kyu","キョ":"kyo",
+          "シャ":"sha","シュ":"shu","ショ":"sho",
+          "チャ":"cha","チュ":"chu","チョ":"cho",
+          "ニャ":"nya","ニュ":"nyu","ニョ":"nyo",
+          "ヒャ":"hya","ヒュ":"hyu","ヒョ":"hyo",
+          "ミャ":"mya","ミュ":"myu","ミョ":"myo",
+          "リャ":"rya","リュ":"ryu","リョ":"ryo",
+          "ギャ":"gya","ギュ":"gyu","ギョ":"gyo",
+          "ジャ":"ja","ジュ":"ju","ジョ":"jo",
+          "ビャ":"bya","ビュ":"byu","ビョ":"byo",
+          "ピャ":"pya","ピュ":"pyu","ピョ":"pyo",
+          "シェ":"she","チェ":"che","ティ":"ti","ディ":"di","トゥ":"tu","ドゥ":"du",
+          "ファ":"fa","フィ":"fi","フェ":"fe","フォ":"fo",
+          "ウァ":"wa","ウィ":"wi","ウェ":"we","ウォ":"wo",
+          "ヴァ":"va","ヴィ":"vi","ヴ":"vu","ヴェ":"ve","ヴォ":"vo",
+          "ツァ":"tsa","ツィ":"tsi","ツェ":"tse","ツォ":"tso",
+          "ジェ":"je"
+        };
+
+        var mono = {
+          "ア":"a","イ":"i","ウ":"u","エ":"e","オ":"o",
+          "カ":"ka","キ":"ki","ク":"ku","ケ":"ke","コ":"ko",
+          "サ":"sa","シ":"shi","ス":"su","セ":"se","ソ":"so",
+          "タ":"ta","チ":"chi","ツ":"tsu","テ":"te","ト":"to",
+          "ナ":"na","ニ":"ni","ヌ":"nu","ネ":"ne","ノ":"no",
+          "ハ":"ha","ヒ":"hi","フ":"fu","ヘ":"he","ホ":"ho",
+          "マ":"ma","ミ":"mi","ム":"mu","メ":"me","モ":"mo",
+          "ヤ":"ya","ユ":"yu","ヨ":"yo",
+          "ラ":"ra","リ":"ri","ル":"ru","レ":"re","ロ":"ro",
+          "ワ":"wa","ヲ":"wo",
+          "ガ":"ga","ギ":"gi","グ":"gu","ゲ":"ge","ゴ":"go",
+          "ザ":"za","ジ":"ji","ズ":"zu","ゼ":"ze","ゾ":"zo",
+          "ダ":"da","ヂ":"ji","ヅ":"zu","デ":"de","ド":"do",
+          "バ":"ba","ビ":"bi","ブ":"bu","ベ":"be","ボ":"bo",
+          "パ":"pa","ピ":"pi","プ":"pu","ペ":"pe","ポ":"po",
+          "ァ":"a","ィ":"i","ゥ":"u","ェ":"e","ォ":"o",
+          " " : " "
+        };
+
+        function lastVowel(roma) {
+          for (var i = roma.length - 1; i >= 0; i--) {
+            var c = roma.charAt(i);
+            if (c === "a" || c === "i" || c === "u" || c === "e" || c === "o") return c;
+          }
+          return "";
+        }
+
+        function startsWithVowelOrY(roma) {
+          if (!roma) return false;
+          var c = roma.charAt(0);
+          return (c === "a" || c === "i" || c === "u" || c === "e" || c === "o" || c === "y");
+        }
+
+        var out = "";
+        var i = 0;
+        while (i < s.length) {
+          var ch = s.charAt(i);
+          if (ch === " ") { out += " "; i++; continue; }
+          if (ch === "ッ") {
+            var nextRoma = "";
+            if (i + 2 <= s.length) {
+              var pair = s.substring(i + 1, i + 3);
+              if (digraph[pair]) nextRoma = digraph[pair];
+            }
+            if (!nextRoma && i + 1 < s.length) {
+              var monoRoma = mono[s.charAt(i + 1)];
+              if (monoRoma && monoRoma !== " ") nextRoma = monoRoma;
+            }
+            if (nextRoma) {
+              var first = nextRoma.charAt(0);
+              if (first && !(first === "a"||first === "i"||first === "u"||first === "e"||first === "o")) out += first;
+            }
+            i++;
+            continue;
+          }
+          if (ch === "ー") {
+            var v = lastVowel(out);
+            if (v) out += v;
+            i++;
+            continue;
+          }
+          if (ch === "ン") {
+            var look = "";
+            if (i + 2 <= s.length) {
+              var p2 = s.substring(i + 1, i + 3);
+              if (digraph[p2]) look = digraph[p2];
+            }
+            if (!look && i + 1 < s.length) {
+              var m1 = mono[s.charAt(i + 1)];
+              if (m1 && m1 !== " ") look = m1;
+            }
+            if (startsWithVowelOrY(look)) out += "n'";
+            else out += "n";
+            i++;
+            continue;
+          }
+          if (i + 1 < s.length) {
+            var two = s.substring(i, i + 2);
+            if (digraph[two]) { out += digraph[two]; i += 2; continue; }
+          }
+          var r = mono[ch];
+          if (r) out += r;
+          else out += ch;
+          i++;
+        }
+        return toLowerAscii(normalizeSpaces(out));
+      }
+
+      function bindAutoFormat(el, fmtFn) {
+        var composing = false;
+        el.addEventListener("compositionstart", function() { composing = true; });
+        el.addEventListener("compositionend", function() {
+          composing = false;
+          el.value = fmtFn(el.value);
+        });
+        el.addEventListener("input", function() {
+          if (composing) return;
+          var v = el.value;
+          var nv = fmtFn(v);
+          if (nv !== v) el.value = nv;
+        });
+        el.addEventListener("blur", function() {
+          el.value = fmtFn(el.value);
+        });
+      }
+
+      var elNameKanji = document.getElementById("nameKanji");
+      var elNameKana  = document.getElementById("nameKana");
+      var elStartDate = document.getElementById("startDate");
+      var elRateType  = document.getElementById("rateType");
+      var elRateValue = document.getElementById("rateValue");
+      var elRoman     = document.getElementById("roman");
+      var elOut       = document.getElementById("out");
+
+      bindAutoFormat(elNameKanji, formatKanjiName);
+      bindAutoFormat(elNameKana, formatKanaName);
+
+      (function bindKanaToRomaji(){
+        var composing = false;
+        elNameKana.addEventListener("compositionstart", function(){ composing = true; });
+        elNameKana.addEventListener("compositionend", function(){
+          composing = false;
+          var k = formatKanaName(elNameKana.value);
+          elNameKana.value = k;
+          elRoman.value = kanaToHepburnRomaji(k);
+        });
+        elNameKana.addEventListener("input", function(){
+          if (composing) return;
+          var k = formatKanaName(elNameKana.value);
+          if (k !== elNameKana.value) elNameKana.value = k;
+          elRoman.value = kanaToHepburnRomaji(k);
+        });
+        elNameKana.addEventListener("blur", function(){
+          var k = formatKanaName(elNameKana.value);
+          elNameKana.value = k;
+          elRoman.value = kanaToHepburnRomaji(k);
+        });
+      })();
+
+      function buildOutput() {
+        var nameKanji = formatKanjiName(elNameKanji.value);
+        var nameKana  = formatKanaName(elNameKana.value);
+        var roman     = kanaToHepburnRomaji(nameKana);
+        var startDate = elStartDate.value || "";
+        var rateType  = elRateType.value || "";
+        var rateNum   = formatNumberWithComma(elRateValue.value);
+        var rateLine  = "";
+        if (rateType && rateNum) rateLine = rateType + " " + rateNum + "円";
+        else if (rateType && !rateNum) rateLine = rateType;
+        else if (!rateType && rateNum) rateLine = rateNum;
+        elNameKanji.value = nameKanji;
+        elNameKana.value  = nameKana;
+        elRoman.value     = roman;
+        var lines = [];
+        lines.push("氏名: " + nameKanji);
+        lines.push("カナ: " + nameKana);
+        lines.push("ローマ字: " + roman);
+        lines.push("開始日: " + startDate);
+        lines.push("単価: " + rateLine);
+        elOut.value = lines.join("\n");
+      }
+
+      document.getElementById("formatBtn").addEventListener("click", function() {
+        buildOutput();
+      });
+
+      document.getElementById("copyBtn").addEventListener("click", function() {
+        buildOutput();
+        var text = elOut.value || "";
+        if (!text) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text);
+        } else {
+          elOut.focus();
+          elOut.select();
+          document.execCommand("copy");
+        }
+      });
+    </script>
+  </body>
+</html>
